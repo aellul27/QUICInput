@@ -1,4 +1,5 @@
 mod menubar;
+mod windowresolution;
 
 use libadwaita::gio::SimpleAction;
 use libadwaita::prelude::*;
@@ -35,13 +36,18 @@ fn build_ui(app: &Application) {
         app.add_action(&connect_action);
     }
 
-    // Create a window and set the title
+    let (window_height, window_width) =
+        windowresolution::find_window_size();
+
+    // Create a window, set the title, and size it relative to the primary display
     let window = ApplicationWindow::builder()
         .application(app)
         .title("QUICinput")
+        .default_height(window_height as i32)
+        .default_width(window_width as i32)
         .content(&content)
         .build();
-
+    
     // Present window
     window.present();
 }
