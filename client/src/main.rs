@@ -1,41 +1,33 @@
-use libadwaita as adw;
+use libadwaita::prelude::*;
+use libadwaita::{glib, Application, ApplicationWindow, HeaderBar};
+use gtk4::{Box, Orientation};
 
-use adw::prelude::*;
-use adw::{Application, ApplicationWindow};
-use glib::ExitCode;
-use gtk4::{Align, Label};
+const APP_ID: &str = "com.aellul27.quicinput.client";
 
-fn build_ui(app: &Application) {
-	// Basic label-only window sufficient for demo
-	let label = Label::builder()
-		.label("Hello, world!")
-		.margin_top(24)
-		.margin_bottom(24)
-		.margin_start(24)
-		.margin_end(24)
-		.halign(Align::Center)
-		.valign(Align::Center)
-		.build();
+fn main() -> glib::ExitCode {
+    // Create a new application
+    let app = Application::builder().application_id(APP_ID).build();
 
-	let window = ApplicationWindow::builder()
-		.application(app)
-		.title("GTK + Libadwaita")
-		.default_width(320)
-		.default_height(120)
-		.content(&label)
-		.build();
+    // Connect to "activate" signal of `app`
+    app.connect_activate(build_ui);
 
-	window.present();
+    // Run the application
+    app.run()
 }
 
-fn main() -> ExitCode {
-	adw::init().expect("Failed to initialize libadwaita");
+fn build_ui(app: &Application) {
 
-	let app = Application::builder()
-		.application_id("com.example.quicinput")
-		.build();
+    // Combine the content in a box
+    let content = Box::new(Orientation::Vertical, 0);
+    // Adwaitas' ApplicationWindow does not include a HeaderBar
+    content.append(&HeaderBar::new());
+    // Create a window and set the title
+    let window = ApplicationWindow::builder()
+        .application(app)
+        .title("QUICinput")
+        .content(&content)
+        .build();
 
-	app.connect_activate(build_ui);
-
-	ExitCode::from(app.run())
+    // Present window
+    window.present();
 }
