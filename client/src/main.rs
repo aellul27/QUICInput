@@ -8,7 +8,6 @@ use gtk4::{Box, Orientation};
 const APP_ID: &str = "com.aellul27.quicinput.client";
 
 fn main() -> glib::ExitCode {
-    glib::set_application_name("QUICinput");
     // Create a new application
     let app = Application::builder().application_id(APP_ID).build();
 
@@ -23,8 +22,10 @@ fn build_ui(app: &Application) {
 
     // Combine the content in a box
     let content = Box::new(Orientation::Vertical, 0);
-    // Adwaitas' ApplicationWindow does not include a HeaderBar
-    content.append(&HeaderBar::new());
+    // Adwaita's ApplicationWindow does not include a HeaderBar
+    let header = HeaderBar::new();
+    header.pack_end(&menubar::build(app));
+    content.append(&header);
 
     if app.lookup_action("test").is_none() {
         let connect_action = SimpleAction::new("test", None);
@@ -34,7 +35,6 @@ fn build_ui(app: &Application) {
         app.add_action(&connect_action);
     }
 
-    menubar::setup(app);
     // Create a window and set the title
     let window = ApplicationWindow::builder()
         .application(app)
