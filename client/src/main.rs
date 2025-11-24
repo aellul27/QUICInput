@@ -1,3 +1,4 @@
+mod connect;
 mod menubar;
 mod windowresolution;
 
@@ -27,6 +28,7 @@ fn build_ui(app: &Application) {
     let header = HeaderBar::new();
     header.pack_end(&menubar::build(app));
     content.append(&header);
+    content.append(&connect::build());
 
     if app.lookup_action("test").is_none() {
         let connect_action = SimpleAction::new("test", None);
@@ -36,8 +38,7 @@ fn build_ui(app: &Application) {
         app.add_action(&connect_action);
     }
 
-    let (window_height, window_width) =
-        windowresolution::find_window_size();
+    let (window_height, window_width) = windowresolution::find_window_size();
 
     // Create a window, set the title, and size it relative to the primary display
     let window = ApplicationWindow::builder()
