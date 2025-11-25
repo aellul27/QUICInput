@@ -13,7 +13,7 @@ use rustls::crypto::aws_lc_rs;
 use rustls::crypto::CryptoProvider;
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
-use crate::quic::{quic_runtime, run_client};
+use crate::quic::{quic_runtime, run_client, open_uni, send_data};
 
 const APP_ID: &str = "com.aellul27.quicinput.client";
 
@@ -23,8 +23,18 @@ fn main() -> glib::ExitCode {
     CryptoProvider::install_default(aws_lc_rs::default_provider())
             .expect("Failed to install default crypto provider");
     let server_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 4433);
-    let _ = quic_runtime().block_on(run_client(server_addr));
-    // Connect to "activate" signal of `app`
+
+    let (_endpoint, connection) = quic_runtime()
+        .block_on(run_client(server_addr))
+        .expect("failed to connect");
+
+    let mut send_stream = quic_runtime()
+        .block_on(open_uni(connection.clone()))
+        .expect("failed to open send stream");
+
+    let _ = quic_runtime()
+        .block_on(send_data(&mut send_stream, b"Hello"));
+
     app.connect_activate(build_ui);
 
     // Run the application

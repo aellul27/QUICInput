@@ -2,9 +2,10 @@ use std::{
     error::Error,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
-use quinn::{ClientConfig, Connection, Endpoint, SendStream, RecvStream};
+use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio::runtime::{Builder, Runtime};
@@ -27,12 +28,18 @@ pub async fn run_client(
     println!("Attempting");
     let mut endpoint = Endpoint::client(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))?;
 
-    endpoint.set_default_client_config(ClientConfig::new(Arc::new(QuicClientConfig::try_from(
-        rustls::ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(SkipServerVerification::new())
-            .with_no_client_auth(),
-    )?)));
+    let rustls_config = rustls::ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(SkipServerVerification::new())
+        .with_no_client_auth();
+
+    let mut client_config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(rustls_config)?));
+
+    let mut transport_config = TransportConfig::default();
+    transport_config.keep_alive_interval(Some(Duration::from_secs(5)));
+    client_config.transport_config(Arc::new(transport_config));
+
+    endpoint.set_default_client_config(client_config);
     // connect to server
     let connection = endpoint
         .connect(server_addr, "localhost")
@@ -41,8 +48,6 @@ pub async fn run_client(
         .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync + 'static>)?;
     println!("[client] connected: addr={}", connection.remote_address());
     
-    let mut send_stream = open_uni(connection.clone()).await?;
-    send_data(&mut send_stream, b"Hello").await;
 
     Ok((endpoint, connection))
 }

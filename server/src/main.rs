@@ -133,33 +133,66 @@ async fn listen_uni_streams(connection: quinn::Connection) {
 }
 
 async fn handle_bi_stream(mut send: quinn::SendStream, mut recv: quinn::RecvStream) {
-    match recv.read_to_end(MAX_STREAM_DATA).await {
-        Ok(data) => {
-            let message = String::from_utf8_lossy(&data);
-            println!("[server] bi stream received: {message}");
+    let mut total = 0usize;
 
-            if let Err(err) = send.write_all(b"ack").await {
-                eprintln!("[server] failed to send ack: {err}");
+    loop {
+        match recv.read_chunk(MAX_STREAM_DATA, true).await {
+            Ok(Some(chunk)) => {
+                total += chunk.bytes.len();
+                let message = String::from_utf8_lossy(&chunk.bytes);
+                println!(
+                    "[server] bi stream chunk ({} bytes): {message}",
+                    chunk.bytes.len()
+                );
+                // dropping `chunk` here returns capacity to flow control
             }
-
-            if let Err(err) = send.finish() {
-                eprintln!("[server] failed to finish bi stream: {err}");
+            Ok(None) => {
+                println!("[server] bi stream closed after {total} bytes");
+                break;
+            }
+            Err(err) => {
+                eprintln!("[server] failed to read bi stream: {err}");
+                return;
             }
         }
-        Err(err) => {
-            eprintln!("[server] failed to read bi stream: {err}");
-        }
+    }
+
+    if let Err(err) = send_bi_data(&mut send, b"ack").await {
+        eprintln!("[server] failed to reply on bi stream: {err}");
     }
 }
 
 async fn handle_uni_stream(mut recv: quinn::RecvStream) {
-    match recv.read_to_end(MAX_STREAM_DATA).await {
-        Ok(data) => {
-            let message = String::from_utf8_lossy(&data);
-            println!("[server] uni stream received: {message}");
-        }
-        Err(err) => {
-            eprintln!("[server] failed to read uni stream: {err}");
+    let mut total = 0usize;
+
+    loop {
+        match recv.read_chunk(MAX_STREAM_DATA, true).await {
+            Ok(Some(chunk)) => {
+                total += chunk.bytes.len();
+                let message = String::from_utf8_lossy(&chunk.bytes);
+                println!(
+                    "[server] uni stream chunk ({} bytes): {message}",
+                    chunk.bytes.len()
+                );
+                // chunk dropped here; grants window credit back to the peer
+            }
+            Ok(None) => {
+                println!("[server] uni stream closed after {total} bytes");
+                break;
+            }
+            Err(err) => {
+                eprintln!("[server] failed to read uni stream: {err}");
+                break;
+            }
         }
     }
+}
+
+async fn send_bi_data(
+    send: &mut quinn::SendStream,
+    payload: &[u8],
+) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    send.write_all(payload).await?;
+    send.finish()?;
+    Ok(())
 }
