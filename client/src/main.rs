@@ -1,11 +1,12 @@
 mod connect;
+mod input;
 mod menubar;
 mod windowresolution;
 
 use libadwaita::gio::SimpleAction;
 use libadwaita::prelude::*;
 use libadwaita::{glib, Application, ApplicationWindow, HeaderBar};
-use gtk4::{Box, Orientation};
+use gtk4::{Box, Orientation, Stack, StackTransitionType};
 
 const APP_ID: &str = "com.aellul27.quicinput.client";
 
@@ -28,7 +29,9 @@ fn build_ui(app: &Application) {
     let header = HeaderBar::new();
     header.pack_end(&menubar::build(app));
     content.append(&header);
-    content.append(&connect::build());
+
+    let stack = build_stack();
+    content.append(&stack);
 
     if app.lookup_action("test").is_none() {
         let connect_action = SimpleAction::new("test", None);
@@ -51,4 +54,27 @@ fn build_ui(app: &Application) {
     
     // Present window
     window.present();
+}
+
+fn build_stack() -> Stack {
+    let stack = Stack::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .transition_type(StackTransitionType::SlideLeftRight)
+        .build();
+
+    let input_view = input::build();
+    stack.add_named(&input_view, Some("input"));
+
+    let stack_for_connect = stack.clone();
+    let input_view_for_connect = input_view.clone();
+    let connect_view = connect::build(move |ip, port| {
+        println!("Connecting to {}:{}", ip, port);
+        stack_for_connect.set_visible_child_name("input");
+        input_view_for_connect.grab_focus();
+    });
+    stack.add_named(&connect_view, Some("connect"));
+
+    stack.set_visible_child_name("connect");
+    stack
 }

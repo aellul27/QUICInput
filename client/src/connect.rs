@@ -1,13 +1,17 @@
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Entry, Image, Label, Orientation};
-use std::net::{IpAddr};
+use std::net::IpAddr;
+use std::rc::Rc;
 
 const OUTER_MARGIN: i32 = 24;
 const COLUMN_SPACING: i32 = 16;
 const INPUT_ROW_SPACING: i32 = 12;
 const STATUS_ROW_SPACING: i32 = 8;
 
-pub fn build() -> Box {
+pub fn build<F>(on_success: F) -> Box
+where
+    F: Fn(String, u16) + 'static,
+{
     let container = build_container();
     container.append(&build_prompt());
 
@@ -17,7 +21,15 @@ pub fn build() -> Box {
     let (status_row, status_label) = build_status_row();
     container.append(&status_row);
 
-    wire_enter_button(&enter_button, &ip_entry, &port_entry, &status_row, &status_label);
+    let on_success = Rc::new(on_success);
+    wire_enter_button(
+        &enter_button,
+        &ip_entry,
+        &port_entry,
+        &status_row,
+        &status_label,
+        on_success,
+    );
 
     container
 }
@@ -81,41 +93,45 @@ fn wire_enter_button(
     port_entry: &Entry,
     status_row: &Box,
     status_label: &Label,
+    on_success: Rc<dyn Fn(String, u16)>,
 ) {
     let ip_entry = ip_entry.clone();
     let port_entry = port_entry.clone();
     let status_row = status_row.clone();
     let status_label = status_label.clone();
+    let on_success = on_success.clone();
 
     enter_button.connect_clicked(move |_btn: &Button| {
         hide_status(&status_row, &status_label);
 
-        let ip = ip_entry.text();
-        if ip.as_str().trim().is_empty() {
+        let ip_value = ip_entry.text();
+        let ip = ip_value.trim();
+        if ip.is_empty() {
             show_status(&status_row, &status_label, "IP address is required");
             return;
         }
 
-        let port = port_entry.text();
-        if port.as_str().trim().is_empty() {
+        let port_value = port_entry.text();
+        let port = port_value.trim();
+        if port.is_empty() {
             show_status(&status_row, &status_label, "Port is required");
             return;
         }
 
-        match port.as_str().trim().parse::<u16>() {
+        let portnum = match port.parse::<u16>() {
             Ok(n) => n,
             Err(_) => {
                 show_status(&status_row, &status_label, "Invalid port number");
                 return;
             }
         };
-        match ip.parse::<IpAddr>() {
-            Ok(n) => n,
-            Err(_) => {
-                show_status(&status_row, &status_label, "Invalid ip address number");
-                return;
-            }
-        };
+
+        if ip.parse::<IpAddr>().is_err() {
+            show_status(&status_row, &status_label, "Invalid IP address");
+            return;
+        }
+
+        on_success(ip.to_string(), portnum);
     });
 }
 
