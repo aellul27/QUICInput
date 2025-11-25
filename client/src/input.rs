@@ -21,12 +21,14 @@ pub fn build() -> Box {
 	title.set_xalign(0.0);
 	container.append(&title);
 
-	let info = Label::new(Some("Click here to start key capture."));
+	let info = Label::new(Some("test"));
 	info.set_xalign(0.0);
 	info.set_wrap(true);
 	let clicker = GestureClick::new();
-	clicker.connect_pressed(|_, _, _, _| {
+	let container_clone = container.clone();
+	clicker.connect_pressed(move |_, _, _, _| {
 		start_global_key_monitor();
+		container_clone.set_cursor_from_name(Some("none"));
 	});
 	info.add_controller(clicker);
 	container.append(&info);

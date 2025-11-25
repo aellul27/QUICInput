@@ -1,10 +1,15 @@
-use rdev::{grab, Event, EventType, Key};
+use rdev::{grab, simulate, Event, EventType, Key};
 #[cfg(target_os = "macos")]
 use rdev::set_is_main_thread;
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+
+static IGNORE_MOUSE: AtomicBool = AtomicBool::new(false);
+
+
+use crate::windowresolution::{find_window_size};
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -38,13 +43,13 @@ struct MonitorStop;
 fn run_key_monitor() {
     #[cfg(target_os = "macos")]
     set_is_main_thread(false);
+    let (middle_y, middle_x) = find_window_size();
+    let _ = simulate(&EventType::MouseMove { x: middle_x, y: middle_y});
 
     let modifiers = Arc::new(Mutex::new(ModifierState::default()));
     let modifier_handle = Arc::clone(&modifiers);
 
     let callback = move |event: Event| -> Option<Event> {
-        println!("Event: {:?} | text {:?}", event.event_type, event.name.as_deref());
-        println!("{:?}", rmp_serde::to_vec(&event.event_type));
         match event.event_type {
             EventType::KeyPress(key) => {
                 println!("Key press   {:?} | text {:?}", key, event.name.as_deref());
@@ -66,10 +71,24 @@ fn run_key_monitor() {
                     .expect("modifier mutex poisoned")
                     .update(key, false);
             }
+            EventType::MouseMove { x, y } => {
+                // Ignore the event triggered by simulate()
+                if IGNORE_MOUSE.swap(false, Ordering::SeqCst) {
+                    return None; // Swallow simulated event
+                }
+
+                println!("Mouse moved x= {:?} | y= {:?}", x - middle_x, y - middle_y);
+
+                // Mark next mouse event as simulated
+                IGNORE_MOUSE.store(true, Ordering::SeqCst);
+
+                let _ = simulate(&EventType::MouseMove { x: middle_x, y: middle_y });
+            }
+            
             _ => {}
         }
 
-        None
+        Some(event)
     };
 
     if let Err(error) = grab(callback) {

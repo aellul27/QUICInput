@@ -13,7 +13,7 @@ pub fn get_display_size() -> (u32, u32) {
         .unwrap_or((0, 0))
 }
 
-pub fn find_window_size() -> (u32, u32) {
-    let display_info = get_display_size();
-    (display_info.0 / 2, display_info.1 / 2)
+pub fn find_window_size() -> (f64, f64) {
+    let (height, width) = get_display_size();
+    (f64::from(height) / 2.0, f64::from(width) / 2.0)
 }
