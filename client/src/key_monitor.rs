@@ -9,6 +9,7 @@ use std::thread;
 static IGNORE_MOUSE: AtomicBool = AtomicBool::new(false);
 
 
+use crate::input::{input_ungrabbed};
 use crate::windowresolution::{find_window_size};
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -97,6 +98,9 @@ fn run_key_monitor() {
 }
 
 fn request_monitor_stop() {
+    glib::MainContext::default().invoke(|| {
+        input_ungrabbed();
+    });
     #[cfg(target_os = "macos")]
     macos_run_loop::stop_current();
 
