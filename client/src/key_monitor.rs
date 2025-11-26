@@ -52,12 +52,16 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
     #[cfg(target_os = "macos")]
     set_is_main_thread(false);
     
-    let mut mouse_stream = quic_runtime()
-        .block_on(open_uni(connection.clone()))
-        .expect("failed to open send stream");
-    let mut keyboard_stream = quic_runtime()
-        .block_on(open_uni(connection.clone()))
-        .expect("failed to open send stream");
+    let mut mouse_stream = Some(
+        quic_runtime()
+            .block_on(open_uni(connection.clone()))
+            .expect("failed to open send stream"),
+    );
+    let mut keyboard_stream = Some(
+        quic_runtime()
+            .block_on(open_uni(connection.clone()))
+            .expect("failed to open send stream"),
+    );
     let (middle_y, middle_x) = find_window_size();
     let _ = simulate(&EventType::MouseMove { x: middle_x, y: middle_y});
 
@@ -68,8 +72,10 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
         match event.event_type {
             EventType::KeyPress(key) => {
                 let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
-                let _ = quic_runtime()
-                    .block_on(send_data(&mut keyboard_stream, &buf));
+                if let Some(stream) = keyboard_stream.as_mut() {
+                    let _ = quic_runtime()
+                        .block_on(send_data(stream, &buf));
+                }
                 let mut state = modifier_handle
                     .lock()
                     .expect("modifier mutex poisoned");
@@ -77,16 +83,24 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
 
                 if state.ctrl_alt_active() && matches!(key, Key::Num0 | Key::Kp0) {
                     println!("Detected Ctrl+Alt+0. Stopping key monitor.");
-                    mouse_stream.finish().unwrap();
-                    keyboard_stream.finish().unwrap();
+                    if let Some(mut stream) = mouse_stream.take() {
+                        let _ = stream.finish();
+                        drop(stream);
+                    }
+                    if let Some(mut stream) = keyboard_stream.take() {
+                        let _ = stream.finish();
+                        drop(stream);
+                    }
                     request_monitor_stop();
                     return None;
                 }
             }
             EventType::KeyRelease(key) => {
                 let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
-                let _ = quic_runtime()
-                    .block_on(send_data(&mut keyboard_stream, &buf));
+                if let Some(stream) = keyboard_stream.as_mut() {
+                    let _ = quic_runtime()
+                        .block_on(send_data(stream, &buf));
+                }
                 modifier_handle
                     .lock()
                     .expect("modifier mutex poisoned")
@@ -100,8 +114,10 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
 
                 let data = MouseMove {dx: (x - middle_x), dy: (y - middle_y) };
                 let buf = rmp_serde::to_vec(&data).expect("failed to serialise");
-                let _ = quic_runtime()
-                    .block_on(send_data(&mut mouse_stream, &buf));
+                if let Some(stream) = mouse_stream.as_mut() {
+                    let _ = quic_runtime()
+                        .block_on(send_data(stream, &buf));
+                }
 
                 // Mark next mouse event as simulated
                 IGNORE_MOUSE.store(true, Ordering::SeqCst);
@@ -110,8 +126,10 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
             }
             EventType::ButtonPress(..) | EventType::ButtonRelease(..) | EventType::Wheel { .. } => {
                 let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
-                let _ = quic_runtime()
-                    .block_on(send_data(&mut mouse_stream, &buf));
+                if let Some(stream) = mouse_stream.as_mut() {
+                    let _ = quic_runtime()
+                        .block_on(send_data(stream, &buf));
+                }
             }
         }
 
