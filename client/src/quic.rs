@@ -8,7 +8,7 @@ use std::{
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use tokio::runtime::{Builder, Runtime};
+use tokio::{runtime::{Builder, Runtime}, time::timeout};
 
 static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
@@ -26,7 +26,7 @@ pub async fn run_client(
     server_addr: SocketAddr,
 ) -> Result<(Endpoint, Connection), Box<dyn Error + Send + Sync + 'static>> {
     println!("Attempting");
-    let mut endpoint = Endpoint::client(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))?;
+    let mut endpoint = Endpoint::client(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))?;
 
     let rustls_config = rustls::ClientConfig::builder()
         .dangerous()
@@ -41,10 +41,18 @@ pub async fn run_client(
 
     endpoint.set_default_client_config(client_config);
     // connect to server
-    let connection = endpoint
+    let connect_future = endpoint
         .connect(server_addr, "localhost")
-        .unwrap()
+        .unwrap();
+
+    let connection = timeout(Duration::from_secs(10), connect_future)
         .await
+        .map_err(|_| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "QUIC connect timed out after 10s",
+            )) as Box<dyn Error + Send + Sync + 'static>
+        })?
         .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync + 'static>)?;
     println!("[client] connected: addr={}", connection.remote_address());
     

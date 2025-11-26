@@ -2,12 +2,12 @@ use rdev::{grab, simulate, Event, EventType, Key};
 #[cfg(target_os = "macos")]
 use rdev::set_is_main_thread;
 use shared::MouseMove;
-use std::panic;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
+use quinn::{Connection, Endpoint};
 use crate::quic::{*};
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 static IGNORE_MOUSE: AtomicBool = AtomicBool::new(false);
 
@@ -17,7 +17,7 @@ use crate::windowresolution::{find_window_size};
 
 static MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
-pub fn start_global_key_monitor() {
+pub fn start_global_key_monitor(endpoint: Endpoint, connection: Connection) {
     let already_running = MONITOR_RUNNING
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err();
@@ -26,8 +26,12 @@ pub fn start_global_key_monitor() {
         return;
     }
 
-    thread::spawn(|| {
-        let result = panic::catch_unwind(run_key_monitor);
+    thread::spawn(move || {
+        let endpoint_for_run = endpoint.clone();
+        let connection_for_run = connection.clone();
+        let result = panic::catch_unwind(AssertUnwindSafe(move || {
+            run_key_monitor(endpoint_for_run, connection_for_run);
+        }));
         MONITOR_RUNNING.store(false, Ordering::SeqCst);
         match result {
             Ok(()) => println!("Global key monitor stopped"),
@@ -44,13 +48,10 @@ pub fn start_global_key_monitor() {
 
 struct MonitorStop;
 
-fn run_key_monitor() {
+fn run_key_monitor(endpoint: Endpoint, connection: Connection) {
     #[cfg(target_os = "macos")]
     set_is_main_thread(false);
-    let server_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 4433);
-    let (endpoint, connection) = quic_runtime()
-        .block_on(run_client(server_addr))
-        .expect("failed to connect");
+    
     let mut send_stream = quic_runtime()
         .block_on(open_uni(connection.clone()))
         .expect("failed to open send stream");

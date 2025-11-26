@@ -1,5 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::{Box, GestureClick, Label, Orientation};
+use quinn::{Connection, Endpoint};
 use crate::key_monitor::start_global_key_monitor;
 use glib::{object::ObjectType, WeakRef};
 use std::{cell::RefCell, thread::LocalKey};
@@ -7,6 +8,7 @@ use std::{cell::RefCell, thread::LocalKey};
 thread_local! {
     static ROOT_CONTAINER: RefCell<Option<WeakRef<Box>>> = RefCell::new(None);
 	static INFO_LABEL:  RefCell<Option<WeakRef<Label>>> = RefCell::new(None);
+	static CONNECTION: RefCell<Option<(Endpoint, Connection)>> = RefCell::new(None);
 }
 
 
@@ -36,18 +38,26 @@ pub fn build() -> Box {
 	info.set_wrap(true);
 	let clicker = GestureClick::new();
 	clicker.connect_pressed(move |_, _, _, _| {
-		start_global_key_monitor();
-		with_widget(&ROOT_CONTAINER, |container: Box| {
-			container.set_cursor_from_name(Some("none"));
-		});
-		with_widget(&INFO_LABEL, |label: Label| {
-			label.set_label("Type CTRL-ALT-0 to ungrab and stop capture.");
+		with_connection(|endpoint, connection| {
+			start_global_key_monitor(endpoint, connection);
+			with_widget(&ROOT_CONTAINER, |container: Box| {
+				container.set_cursor_from_name(Some("none"));
+			});
+			with_widget(&INFO_LABEL, |label: Label| {
+				label.set_label("Type CTRL-ALT-0 to ungrab and stop capture.");
+			});
 		});
 	});
 	container.add_controller(clicker);
 	container.append(&info);
 
 	container
+}
+
+pub fn set_connection(endpoint: Endpoint, connection: Connection) {
+	CONNECTION.with(|cell| {
+		*cell.borrow_mut() = Some((endpoint, connection));
+	});
 }
 
 fn with_widget<T, F>(storage: &'static LocalKey<RefCell<Option<WeakRef<T>>>>, action: F)
@@ -72,6 +82,17 @@ where
 {
 	storage.with(|cell| {
 		*cell.borrow_mut() = Some(widget.downgrade());
+	});
+}
+
+fn with_connection<F>(action: F)
+where
+	F: FnOnce(Endpoint, Connection),
+{
+	CONNECTION.with(|cell| {
+		if let Some((endpoint, connection)) = cell.borrow().as_ref() {
+			action(endpoint.clone(), connection.clone());
+		}
 	});
 }
 

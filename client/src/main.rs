@@ -74,8 +74,9 @@ fn build_stack() -> Stack {
 
     let stack_for_connect = stack.clone();
     let input_view_for_connect = input_view.clone();
-    let connect_view = connect::build(move |ip, port| {
-        println!("Connecting to {}:{}", ip, port);
+        let connect_view = connect::build(move |ip, port, endpoint, connection| {
+            println!("Connected to {}:{}", ip, port);
+            input::set_connection(endpoint, connection);
         stack_for_connect.set_visible_child_name("input");
         input_view_for_connect.grab_focus();
     });

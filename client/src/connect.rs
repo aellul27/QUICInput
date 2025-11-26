@@ -1,7 +1,10 @@
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Entry, Image, Label, Orientation};
-use std::net::IpAddr;
+use quinn::{Connection, Endpoint};
+use std::net::{IpAddr, SocketAddr};
 use std::rc::Rc;
+
+use crate::quic::{quic_runtime, run_client};
 
 const OUTER_MARGIN: i32 = 24;
 const COLUMN_SPACING: i32 = 16;
@@ -10,7 +13,7 @@ const STATUS_ROW_SPACING: i32 = 8;
 
 pub fn build<F>(on_success: F) -> Box
 where
-    F: Fn(String, u16) + 'static,
+    F: Fn(String, u16, Endpoint, Connection) + 'static,
 {
     let container = build_container();
     container.append(&build_prompt());
@@ -93,7 +96,7 @@ fn wire_enter_button(
     port_entry: &Entry,
     status_row: &Box,
     status_label: &Label,
-    on_success: Rc<dyn Fn(String, u16)>,
+    on_success: Rc<dyn Fn(String, u16, Endpoint, Connection)>,
 ) {
     let button_for_ip = enter_button.clone();
     ip_entry.connect_activate(move |_entry| {
@@ -136,12 +139,27 @@ fn wire_enter_button(
             }
         };
 
-        if ip.parse::<IpAddr>().is_err() {
-            show_status(&status_row, &status_label, "Invalid IP address");
-            return;
+        let ip_addr = match ip.parse::<IpAddr>() {
+            Ok(a) => a,
+            Err(_) => {
+                show_status(&status_row, &status_label, "Invalid IP address");
+                return;
+            }
+        };
+        let server_addr = SocketAddr::new(ip_addr, portnum);
+        match quic_runtime().block_on(run_client(server_addr)) {
+            Ok((endpoint, connection)) => {
+                on_success(ip.to_string(), portnum, endpoint, connection);
+            }
+            Err(err) => {
+                show_status(
+                    &status_row,
+                    &status_label,
+                    &format!("Failed to connect: {err}"),
+                );
+                println!("Failed to connect: {err}");
+            }
         }
-
-        on_success(ip.to_string(), portnum);
     });
 }
 
