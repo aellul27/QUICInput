@@ -5,8 +5,10 @@ use std::{
 };
 
 use quinn::{Endpoint, ServerConfig};
+use rdev::EventType;
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use shared::MouseMove;
 
 
 #[tokio::main]
@@ -187,11 +189,23 @@ async fn handle_uni_stream(mut recv: quinn::RecvStream) {
         match recv.read_chunk(MAX_STREAM_DATA, true).await {
             Ok(Some(chunk)) => {
                 total += chunk.bytes.len();
-                let message = String::from_utf8_lossy(&chunk.bytes);
-                println!(
-                    "[server] uni stream chunk ({} bytes): {message}",
-                    chunk.bytes.len()
-                );
+                if let Ok(mouse_move) = rmp_serde::from_slice::<MouseMove>(&chunk.bytes) {
+                    println!(
+                        "[server] uni stream mouse move: dx={:.3}, dy={:.3}",
+                        mouse_move.dx,
+                        mouse_move.dy
+                    );
+                } else if let Ok(event_type) = rmp_serde::from_slice::<EventType>(&chunk.bytes) {
+                    println!(
+                        "[server] uni stream event: {:?}",
+                        event_type
+                    );
+                } else {
+                    println!(
+                        "[server] uni stream unknown payload ({} bytes)",
+                        chunk.bytes.len()
+                    );
+                }
                 // chunk dropped here; grants window credit back to the peer
             }
             Ok(None) => {

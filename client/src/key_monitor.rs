@@ -5,7 +5,7 @@ use shared::MouseMove;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread::{self, sleep};
+use std::thread::{self};
 use quinn::{Connection, Endpoint};
 use crate::quic::{*};
 
@@ -48,11 +48,14 @@ pub fn start_global_key_monitor(endpoint: Endpoint, connection: Connection) {
 
 struct MonitorStop;
 
-fn run_key_monitor(endpoint: Endpoint, connection: Connection) {
+fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
     #[cfg(target_os = "macos")]
     set_is_main_thread(false);
     
-    let mut send_stream = quic_runtime()
+    let mut mouse_stream = quic_runtime()
+        .block_on(open_uni(connection.clone()))
+        .expect("failed to open send stream");
+    let mut keyboard_stream = quic_runtime()
         .block_on(open_uni(connection.clone()))
         .expect("failed to open send stream");
     let (middle_y, middle_x) = find_window_size();
@@ -64,7 +67,9 @@ fn run_key_monitor(endpoint: Endpoint, connection: Connection) {
     let callback = move |event: Event| -> Option<Event> {
         match event.event_type {
             EventType::KeyPress(key) => {
-                println!("Key press   {:?} | text {:?}", key, event.name.as_deref());
+                let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
+                let _ = quic_runtime()
+                    .block_on(send_data(&mut keyboard_stream, &buf));
                 let mut state = modifier_handle
                     .lock()
                     .expect("modifier mutex poisoned");
@@ -72,16 +77,16 @@ fn run_key_monitor(endpoint: Endpoint, connection: Connection) {
 
                 if state.ctrl_alt_active() && matches!(key, Key::Num0 | Key::Kp0) {
                     println!("Detected Ctrl+Alt+0. Stopping key monitor.");
-                    send_stream.finish().unwrap();
-                    let _ = sleep(std::time::Duration::from_millis(10));
-                    let _ = quic_runtime()
-                        .block_on(close_client(connection.clone(), endpoint.clone()));
+                    mouse_stream.finish().unwrap();
+                    keyboard_stream.finish().unwrap();
                     request_monitor_stop();
                     return None;
                 }
             }
             EventType::KeyRelease(key) => {
-                println!("Key release {:?} | text {:?}", key, event.name.as_deref());
+                let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
+                let _ = quic_runtime()
+                    .block_on(send_data(&mut keyboard_stream, &buf));
                 modifier_handle
                     .lock()
                     .expect("modifier mutex poisoned")
@@ -96,15 +101,18 @@ fn run_key_monitor(endpoint: Endpoint, connection: Connection) {
                 let data = MouseMove {dx: (x - middle_x), dy: (y - middle_y) };
                 let buf = rmp_serde::to_vec(&data).expect("failed to serialise");
                 let _ = quic_runtime()
-                    .block_on(send_data(&mut send_stream, &buf));
+                    .block_on(send_data(&mut mouse_stream, &buf));
 
                 // Mark next mouse event as simulated
                 IGNORE_MOUSE.store(true, Ordering::SeqCst);
 
                 let _ = simulate(&EventType::MouseMove { x: middle_x, y: middle_y });
             }
-            
-            _ => {}
+            EventType::ButtonPress(..) | EventType::ButtonRelease(..) | EventType::Wheel { .. } => {
+                let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
+                let _ = quic_runtime()
+                    .block_on(send_data(&mut mouse_stream, &buf));
+            }
         }
 
         None
