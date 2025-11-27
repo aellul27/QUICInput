@@ -31,6 +31,31 @@ type DeviceInput = Arc<Mutex<Option<uinput::Device>>>;
 #[cfg(not(target_os = "linux"))]
 type DeviceInput = ();
 
+#[cfg(target_os = "linux")]
+fn ensure_uinput_available() {
+    use std::process::Command;
+
+    let output = match Command::new("lsmod").output() {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[server] failed to run lsmod: {error}");
+            std::process::exit(1);
+        }
+    };
+
+    let modules = String::from_utf8_lossy(&output.stdout);
+    let has_uinput = modules
+        .lines()
+        .any(|line| line.split_whitespace().next() == Some("uinput"));
+
+    if !has_uinput {
+        eprintln!(
+            "[server] kernel module 'uinput' is not loaded. Please enable it (e.g., 'sudo modprobe uinput') and ensure this program has permission to access /dev/uinput."
+        );
+        std::process::exit(1);
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
@@ -40,11 +65,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let simulators: Simulators = Arc::new([EventSimulator::new(), EventSimulator::new()]);
 
     #[cfg(target_os = "linux")]
-    let device_input = match create_virtual_mouse() {
-        Ok(device) => Arc::new(Mutex::new(Some(device))),
-        Err(err) => {
-            eprintln!("[server] failed to create virtual mouse: {err}");
-            Arc::new(Mutex::new(None))
+    let device_input = {
+        ensure_uinput_available();
+        match create_virtual_mouse() {
+            Ok(device) => Arc::new(Mutex::new(Some(device))),
+            Err(err) => {
+                eprintln!("[server] failed to create virtual mouse: {err}");
+                Arc::new(Mutex::new(None))
+            }
         }
     };
 

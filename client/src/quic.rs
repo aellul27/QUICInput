@@ -60,6 +60,7 @@ pub async fn run_client(
     Ok((endpoint, connection))
 }
 
+#[allow(dead_code)]
 pub async fn open_bi(
     connection: Connection
 ) -> Result<(SendStream, RecvStream), Box<dyn Error + Send + Sync + 'static>> {
@@ -69,7 +70,6 @@ pub async fn open_bi(
         .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync + 'static>)?;
     Ok((send, recv))
 }
-
 
 pub async fn open_uni(
     connection: Connection
@@ -92,6 +92,7 @@ pub async fn send_data(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn recieve_data(
     mut recv_stream: RecvStream,
 ) -> Result<Vec<u8>, Box<dyn Error + Send + Sync + 'static>> {
@@ -102,6 +103,7 @@ pub async fn recieve_data(
     Ok(resp)
 }
 
+#[allow(dead_code)]
 pub async fn close_client(
     connection: Connection,
     endpoint: Endpoint
