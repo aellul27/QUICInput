@@ -116,12 +116,14 @@ fn run_key_monitor(_endpoint: Endpoint, connection: Connection) {
             EventType::ButtonPress(..) | EventType::ButtonRelease(..) => {
                 let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
                 send_data(&mut quic_sender, QuicCommand::Mouse(buf));
+                return None;
             }
             EventType::Wheel { delta_x, delta_y } => {
                 if delta_x != 0 || delta_y != 0 {
                     let buf = rmp_serde::to_vec(&event.event_type).expect("failed to serialise");
                     send_data(&mut quic_sender, QuicCommand::Mouse(buf));
                 }
+                return None;
             }
         }
 

@@ -8,8 +8,8 @@ mod quic_helper_thread;
 
 use libadwaita::gio::SimpleAction;
 use libadwaita::prelude::*;
-use libadwaita::{glib, Application, ApplicationWindow, HeaderBar};
-use gtk4::{Box, Orientation, Stack, StackTransitionType};
+use libadwaita::{glib, Application, ApplicationWindow, HeaderBar, ToolbarView};
+use gtk4::{Stack, StackTransitionType};
 use rustls::crypto::aws_lc_rs;
 use rustls::crypto::CryptoProvider;
 
@@ -29,16 +29,15 @@ fn main() -> glib::ExitCode {
 }
 
 fn build_ui(app: &Application) {
+    let toolbar_view = ToolbarView::new();
 
-    // Combine the content in a box
-    let content = Box::new(Orientation::Vertical, 0);
-    // Adwaita's ApplicationWindow does not include a HeaderBar
+    // Header bar sits in the toolbar view so Adwaita can manage window chrome
     let header = HeaderBar::new();
     header.pack_end(&menubar::build(app));
-    content.append(&header);
+    toolbar_view.add_top_bar(&header);
 
     let stack = build_stack();
-    content.append(&stack);
+    toolbar_view.set_content(Some(&stack));
 
     if app.lookup_action("test").is_none() {
         let connect_action = SimpleAction::new("test", None);
@@ -56,7 +55,7 @@ fn build_ui(app: &Application) {
         .title("QUICinput")
         .default_height(window_height as i32)
         .default_width(window_width as i32)
-        .content(&content)
+        .content(&toolbar_view)
         .build();
     
     // Present window
