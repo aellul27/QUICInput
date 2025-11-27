@@ -7,6 +7,7 @@ use uinput::event::relative;
 pub fn create_virtual_mouse() -> Result<uinput::Device, uinput::Error> {
     uinput::default()?
         .name("my-virtual-mouse")?
+        .event(Mouse::Left)?
         .event(relative::Position::X)?
         .event(relative::Position::Y)?
         .create()
@@ -15,7 +16,7 @@ pub fn create_virtual_mouse() -> Result<uinput::Device, uinput::Error> {
 #[cfg(target_os = "linux")]
 pub fn do_mouse_move(device: &mut uinput::Device, mousemove: MouseMove) -> Result<(), uinput::Error> {
     device.position(&relative::Position::X, mousemove.dx.ceil() as i32)?;
-    device.position(&relative::Position::Y, mousemove.dx.ceil() as i32)?;
+    device.position(&relative::Position::Y, mousemove.dy.ceil() as i32)?;
     device.synchronize()?;
     Ok(())
 }
