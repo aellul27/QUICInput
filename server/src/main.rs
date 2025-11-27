@@ -12,8 +12,13 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use shared::MouseMove;
 
 mod simulator;
+mod mousemove;
+
+use mousemove::do_mouse_move;
 
 use simulator::EventSimulator;
+
+type Simulators = Arc<[EventSimulator; 2]>;
 
 
 #[tokio::main]
@@ -21,14 +26,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     // server and client are running on the same thread asynchronously
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 4433);
     const MAX_CONNECTIONS: usize = 16;
-    let simulator = Arc::new(EventSimulator::new());
-    run_server(addr, MAX_CONNECTIONS, simulator).await
+    let simulators: Simulators = Arc::new([EventSimulator::new(), EventSimulator::new()]);
+    run_server(addr, MAX_CONNECTIONS, simulators).await
 }
 
 async fn run_server(
     addr: SocketAddr,
     max_connections: usize,
-    simulator: Arc<EventSimulator>,
+    simulators: Simulators,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let (endpoint, _server_cert) = make_server_endpoint(addr)?;
     println!("[server] listening on {} with max {} connections", addr, max_connections);
@@ -44,9 +49,9 @@ async fn run_server(
             }
         };
 
-        let simulator_for_connection = Arc::clone(&simulator);
+        let simulators_for_connection = Arc::clone(&simulators);
         tokio::spawn(async move {
-            handle_connection(incoming, permit, simulator_for_connection).await;
+            handle_connection(incoming, permit, simulators_for_connection).await;
         });
     }
 
@@ -78,7 +83,7 @@ const MAX_STREAM_DATA: usize = 64 * 1024;
 async fn handle_connection(
     incoming: quinn::Incoming,
     permit: OwnedSemaphorePermit,
-    simulator: Arc<EventSimulator>,
+    simulators: Simulators,
 ) {
     match incoming.await {
         Ok(connection) => {
@@ -88,7 +93,7 @@ async fn handle_connection(
             );
 
             let bi_task = tokio::spawn(listen_bi_streams(connection.clone()));
-            let uni_task = tokio::spawn(listen_uni_streams(connection.clone(), Arc::clone(&simulator)));
+            let uni_task = tokio::spawn(listen_uni_streams(connection.clone(), Arc::clone(&simulators)));
             let close_task = tokio::spawn(async move {
                 let reason = connection.closed().await;
                 match reason {
@@ -147,15 +152,15 @@ async fn listen_bi_streams(connection: quinn::Connection) {
     }
 }
 
-async fn listen_uni_streams(connection: quinn::Connection, simulator: Arc<EventSimulator>) {
+async fn listen_uni_streams(connection: quinn::Connection, simulators: Simulators) {
     loop {
         match connection.accept_uni().await {
             Ok(recv) => {
                 let handle = tokio::runtime::Handle::current();
-                let simulator = Arc::clone(&simulator);
+                let simulators = Arc::clone(&simulators);
                 thread::spawn(move || {
                     handle.block_on(async move {
-                        handle_uni_stream(recv, simulator).await;
+                        handle_uni_stream(recv, simulators).await;
                     });
                 });
             }
@@ -201,7 +206,7 @@ async fn handle_bi_stream(mut send: quinn::SendStream, mut recv: quinn::RecvStre
     }
 }
 
-async fn handle_uni_stream(mut recv: quinn::RecvStream, simulator: Arc<EventSimulator>) {
+async fn handle_uni_stream(mut recv: quinn::RecvStream, simulators: Simulators) {
     let mut total = 0usize;
 
     loop {
@@ -209,21 +214,28 @@ async fn handle_uni_stream(mut recv: quinn::RecvStream, simulator: Arc<EventSimu
             Ok(Some(chunk)) => {
                 total += chunk.bytes.len();
                 if let Ok(mouse_move) = rmp_serde::from_slice::<MouseMove>(&chunk.bytes) {
+                    #[cfg(target_os = "linux")]
                     println!(
                         "[server] uni stream mouse move: dx={:.3}, dy={:.3}",
                         mouse_move.dx,
                         mouse_move.dy
                     );
+                    #[cfg(not(target_os = "linux"))]
+                    do_mouse_move(&simulators[1], mouse_move);
+                    
                 } else if let Ok(event_type) = rmp_serde::from_slice::<EventType>(&chunk.bytes) {
                     match event_type {
-                        EventType::MouseMove { .. } => {
-                            println!("[server] uni stream event (mouse move)");
+                        EventType::ButtonPress(..) | EventType::ButtonRelease(..) | EventType::Wheel { .. } => {
+                            println!("[server] uni stream event: {:?}", event_type);
+                            simulators[1].enqueue(event_type);
                         }
                         other => {
                             println!("[server] uni stream event: {:?}", other);
-                            simulator.enqueue(other);
+                            simulators[0].enqueue(event_type);
                         }
                     }
+
+                    
                 } else {
                     println!(
                         "[server] uni stream unknown payload ({} bytes)",
