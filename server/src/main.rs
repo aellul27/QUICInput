@@ -27,7 +27,7 @@ use crate::mousemove::create_virtual_mouse;
 type Simulators = Arc<[EventSimulator; 2]>;
 
 #[cfg(target_os = "linux")]
-type DeviceInput = Arc<Mutex<uinput::Device>>;
+type DeviceInput = Arc<Mutex<Option<uinput::Device>>>;
 #[cfg(not(target_os = "linux"))]
 type DeviceInput = ();
 
@@ -40,14 +40,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let simulators: Simulators = Arc::new([EventSimulator::new(), EventSimulator::new()]);
 
     #[cfg(target_os = "linux")]
-    let device_input = {
-        let device = create_virtual_mouse()?;
-        Arc::new(Mutex::new(device))
+    let device_input = match create_virtual_mouse() {
+        Ok(device) => Arc::new(Mutex::new(Some(device))),
+        Err(err) => {
+            eprintln!("[server] failed to create virtual mouse: {err}");
+            Arc::new(Mutex::new(None))
+        }
     };
 
     #[cfg(not(target_os = "linux"))]
     let device_input = ();
-
     run_server(addr, MAX_CONNECTIONS, simulators, device_input).await
 }
 
@@ -261,9 +263,13 @@ async fn handle_uni_stream(
                     #[cfg(target_os = "linux")]
                     {
                         match device_input.lock() {
-                            Ok(mut device) => {
-                                if let Err(err) = do_mouse_move(&mut *device, mouse_move) {
-                                    eprintln!("[server] failed to emit mouse move: {err}");
+                            Ok(mut maybe_device) => {
+                                if let Some(device) = maybe_device.as_mut() {
+                                    if let Err(err) = do_mouse_move(device, mouse_move) {
+                                        eprintln!("[server] failed to emit mouse move: {err}");
+                                    }
+                                } else {
+                                    eprintln!("[server] virtual mouse not available; dropping MouseMove");
                                 }
                             }
                             Err(poisoned) => {
