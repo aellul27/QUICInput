@@ -15,6 +15,8 @@ rcgen = "0.14.5"
 rmp-serde = "1.3.0"
 mouse_position = "0.1.4"
 rdev = { git = "https://github.com/Narsil/rdev.git", features = ["serialize"] }
+serde = "1.0.228"
+toml = "0.9.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rdev = { git = "https://github.com/Narsil/rdev.git", features = ["wayland"] } # Replace with x11 if on x11
