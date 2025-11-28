@@ -288,11 +288,9 @@ async fn handle_uni_stream(
                         EventType::ButtonPress(..)
                         | EventType::ButtonRelease(..)
                         | EventType::Wheel { .. } => {
-                            println!("[server] uni stream event: {:?}", event_type);
                             simulators[1].enqueue(event_type);
                         }
                         other => {
-                            println!("[server] uni stream event: {:?}", other);
                             simulators[0].enqueue(event_type);
                         }
                     }
