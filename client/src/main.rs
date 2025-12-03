@@ -21,10 +21,10 @@ use quinn::{Connection, Endpoint};
 const APP_ID: &str = "com.aellul27.quicinput.client";
 
 fn main() -> glib::ExitCode {
-    // let res_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/icons.gresource"));
-    // let resource = gtk4::gio::Resource::from_data(&glib::Bytes::from_static(res_bytes))
-    //     .expect("Failed to load GResource");
-    // gtk4::gio::resources_register(&resource);
+    let res_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/icons.gresource"));
+    let resource = gtk4::gio::Resource::from_data(&glib::Bytes::from_static(res_bytes))
+        .expect("Failed to load GResource");
+    gtk4::gio::resources_register(&resource);
     // Create a new application
     let app = Application::builder().application_id(APP_ID).build();
     CryptoProvider::install_default(aws_lc_rs::default_provider())

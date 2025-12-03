@@ -10,7 +10,6 @@ pub fn show_about(parent: Option<&ApplicationWindow>) {
     dialog.set_website("https://github.com/aellul27/quicinput");
     dialog.set_comments("A small tool for sending QUIC input data.");
 
-    #[cfg(not(target_os = "macos"))]
     dialog.set_application_icon("Icon");
 
 
