@@ -91,6 +91,8 @@ fn build_ui(app: &Application) {
         });
     }
 
+    gtk4::Window::set_default_icon_name("Icon");
+
     let (window_height, window_width) = windowresolution::find_window_size();
 
     // Create a window, set the title, and size it relative to the primary display
@@ -101,10 +103,6 @@ fn build_ui(app: &Application) {
         .default_width(window_width as i32)
         .content(&toolbar_view)
         .build();
-
-    // Dont set icon on MacOS
-    #[cfg(not(target_os = "macos"))]
-    setup_icon();
 
     {
         let controller_for_close = controller.clone();
@@ -118,17 +116,6 @@ fn build_ui(app: &Application) {
     
     // Present window
     window.present();
-}
-
-// Called during app startup
-fn setup_icon() {
-    let display = gtk4::gdk::Display::default().unwrap();
-    let theme = gtk4::IconTheme::for_display(&display);
-
-    // Adds the prefix to the search path
-    theme.add_resource_path("/com/aellul27/quicinput/client/icons");
-
-    gtk4::Window::set_default_icon_name("Icon");
 }
 
 struct AppController {
